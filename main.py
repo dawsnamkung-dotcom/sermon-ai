@@ -35,9 +35,14 @@ HTML_CONTENT = """
         #uploadBtn { background-color: #27ae60; }
         input[type="file"] { margin-bottom: 15px; font-size: 16px; }
         .output-box { background-color: #fff; padding: 20px; border-radius: 8px; margin-top: 20px; white-space: pre-wrap; line-height: 1.6; border: 1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .loading { display: none; color: #2980b9; font-weight: bold; margin-top: 10px; text-align: center; font-size: 18px; }
         .model-info { color: #7f8c8d; font-size: 13px; text-align: right; margin-bottom: 10px; border-bottom: 1px dashed #bdc3c7; padding-bottom: 5px; }
         hr { border: 0; height: 1px; background: #dcdde1; margin: 20px 0; }
+        
+        /* 로딩 애니메이션 스타일 */
+        .loading-container { display: none; background-color: #e8f4f8; border: 1px solid #bde0ec; padding: 20px; border-radius: 8px; margin-top: 20px; text-align: center; }
+        .spinner { display: inline-block; width: 40px; height: 40px; border: 4px solid rgba(41, 128, 185, 0.2); border-radius: 50%; border-top-color: #2980b9; animation: spin 1s ease-in-out infinite; margin-bottom: 15px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { color: #2c3e50; font-size: 16px; font-weight: bold; transition: all 0.5s ease; }
     </style>
 </head>
 <body>
@@ -60,13 +65,18 @@ HTML_CONTENT = """
         <button id="uploadBtn" class="btn">📁 파일 업로드 및 요약하기</button>
     </div>
     
-    <div id="loading" class="loading">⏳ 최신 AI 모델로 음성 분석 및 요약 중입니다...</div>
+    <!-- 동적 로딩 화면 UI -->
+    <div id="loadingContainer" class="loading-container">
+        <div class="spinner"></div>
+        <div id="loadingText" class="loading-text">분석 준비 중...</div>
+    </div>
     
     <div id="resultBox" class="output-box" style="display:none;"></div>
 
     <script>
         const contextInput = document.getElementById('context');
-        const loading = document.getElementById('loading');
+        const loadingContainer = document.getElementById('loadingContainer');
+        const loadingText = document.getElementById('loadingText');
         const resultBox = document.getElementById('resultBox');
 
         let mediaRecorder;
@@ -118,9 +128,30 @@ HTML_CONTENT = """
         };
 
         async function sendAudioData(fileOrBlob, filename) {
-            loading.style.display = 'block';
+            // UI 초기화
+            loadingContainer.style.display = 'block';
             resultBox.style.display = 'none';
             
+            // 진행 과정 텍스트 배열
+            const steps = [
+                "📡 오디오 파일을 안전하게 서버로 전송하고 있습니다...",
+                "🔄 구글 AI 서버에서 음성 데이터를 활성화(처리)하는 중입니다...",
+                "🧠 최신 모델이 목소리를 텍스트로 추출(STT)하고 있습니다...",
+                "📝 전체 문맥을 파악하여 4단락 구조로 요약본을 작성 중입니다...",
+                "✨ 거의 다 되었습니다! 최종 양식을 예쁘게 다듬는 중입니다..."
+            ];
+            
+            let stepIndex = 0;
+            loadingText.innerText = steps[stepIndex];
+            
+            // 4.5초마다 진행 상태 텍스트 변경
+            const progressInterval = setInterval(() => {
+                stepIndex++;
+                if (stepIndex < steps.length) {
+                    loadingText.innerText = steps[stepIndex];
+                }
+            }, 4500);
+
             const formData = new FormData();
             formData.append('audio_file', fileOrBlob, filename);
             formData.append('context', contextInput.value);
@@ -132,13 +163,16 @@ HTML_CONTENT = """
                 });
                 const data = await response.json();
                 
-                loading.style.display = 'none';
+                // 완료 시 타이머 종료 및 UI 전환
+                clearInterval(progressInterval);
+                loadingContainer.style.display = 'none';
                 resultBox.style.display = 'block';
                 
                 const modelInfoHtml = `<div class="model-info">💡 적용된 AI 모델: ${data.model_used}</div>`;
                 resultBox.innerHTML = modelInfoHtml + data.result;
             } catch (error) {
-                loading.style.display = 'none';
+                clearInterval(progressInterval);
+                loadingContainer.style.display = 'none';
                 alert("오류가 발생했습니다: " + error);
             }
         }
@@ -164,7 +198,6 @@ async def process_audio(audio_file: UploadFile = File(...), context: str = Form(
     try:
         uploaded_file = client.files.upload(file=temp_audio_path)
         
-        # 파일이 활성화(ACTIVE) 상태가 될 때까지 대기
         while True:
             file_info = client.files.get(name=uploaded_file.name)
             if file_info.state == "ACTIVE":
