@@ -3,7 +3,7 @@ import tempfile
 import re
 import time
 from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
 import nest_asyncio
 from google import genai
@@ -38,7 +38,6 @@ HTML_CONTENT = """
         .model-info { color: #7f8c8d; font-size: 13px; text-align: right; margin-bottom: 10px; border-bottom: 1px dashed #bdc3c7; padding-bottom: 5px; }
         hr { border: 0; height: 1px; background: #dcdde1; margin: 20px 0; }
         
-        /* 로딩 애니메이션 스타일 */
         .loading-container { display: none; background-color: #e8f4f8; border: 1px solid #bde0ec; padding: 20px; border-radius: 8px; margin-top: 20px; text-align: center; }
         .spinner { display: inline-block; width: 40px; height: 40px; border: 4px solid rgba(41, 128, 185, 0.2); border-radius: 50%; border-top-color: #2980b9; animation: spin 1s ease-in-out infinite; margin-bottom: 15px; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -65,7 +64,6 @@ HTML_CONTENT = """
         <button id="uploadBtn" class="btn">📁 파일 업로드 및 요약하기</button>
     </div>
     
-    <!-- 동적 로딩 화면 UI -->
     <div id="loadingContainer" class="loading-container">
         <div class="spinner"></div>
         <div id="loadingText" class="loading-text">분석 준비 중...</div>
@@ -89,16 +87,22 @@ HTML_CONTENT = """
             mediaRecorder = new MediaRecorder(stream);
             
             mediaRecorder.ondataavailable = event => {
-                audioChunks.push(event.data);
+                if (event.data.size > 0) {
+                    audioChunks.push(event.data);
+                }
             };
 
             mediaRecorder.onstop = async () => {
+                if (audioChunks.length === 0) {
+                    alert("녹음된 소리가 없습니다. 마이크를 확인해주세요.");
+                    return;
+                }
                 const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                 await sendAudioData(audioBlob, 'recording.webm');
                 audioChunks = [];
             };
 
-            mediaRecorder.start();
+            mediaRecorder.start(1000); // 1초 단위로 데이터 저장 강제 (안정성 강화)
             recordBtn.disabled = true;
             recordBtn.style.backgroundColor = '#c0392b';
             recordBtn.innerText = '🔴 녹음 중...';
@@ -128,23 +132,20 @@ HTML_CONTENT = """
         };
 
         async function sendAudioData(fileOrBlob, filename) {
-            // UI 초기화
             loadingContainer.style.display = 'block';
             resultBox.style.display = 'none';
             
-            // 진행 과정 텍스트 배열
             const steps = [
                 "📡 오디오 파일을 안전하게 서버로 전송하고 있습니다...",
-                "🔄 구글 AI 서버에서 음성 데이터를 활성화(처리)하는 중입니다...",
-                "🧠 최신 모델이 목소리를 텍스트로 추출(STT)하고 있습니다...",
-                "📝 전체 문맥을 파악하여 4단락 구조로 요약본을 작성 중입니다...",
+                "🔄 구글 AI 서버에서 음성 데이터를 처리하는 중입니다...",
+                "🧠 최신 모델이 목소리를 텍스트로 변환(STT)하고 있습니다...",
+                "📝 전체 문맥을 파악하여 구조화 요약본을 작성 중입니다...",
                 "✨ 거의 다 되었습니다! 최종 양식을 예쁘게 다듬는 중입니다..."
             ];
             
             let stepIndex = 0;
             loadingText.innerText = steps[stepIndex];
             
-            // 4.5초마다 진행 상태 텍스트 변경
             const progressInterval = setInterval(() => {
                 stepIndex++;
                 if (stepIndex < steps.length) {
@@ -154,26 +155,34 @@ HTML_CONTENT = """
 
             const formData = new FormData();
             formData.append('audio_file', fileOrBlob, filename);
-            formData.append('context', contextInput.value);
+            formData.append('context', contextInput.value || ""); // 빈 값일 경우 명시적 처리
 
             try {
                 const response = await fetch('/process_audio', {
                     method: 'POST',
                     body: formData
                 });
+                
                 const data = await response.json();
                 
-                // 완료 시 타이머 종료 및 UI 전환
                 clearInterval(progressInterval);
                 loadingContainer.style.display = 'none';
-                resultBox.style.display = 'block';
                 
+                // 서버에서 에러가 발생한 경우 (400, 500 등)
+                if (!response.ok) {
+                    const errorMessage = data.error || data.detail || "서버 통신 중 알 수 없는 오류가 발생했습니다.";
+                    throw new Error(errorMessage);
+                }
+                
+                // 정상 처리된 경우
+                resultBox.style.display = 'block';
                 const modelInfoHtml = `<div class="model-info">💡 적용된 AI 모델: ${data.model_used}</div>`;
                 resultBox.innerHTML = modelInfoHtml + data.result;
+                
             } catch (error) {
                 clearInterval(progressInterval);
                 loadingContainer.style.display = 'none';
-                alert("오류가 발생했습니다: " + error);
+                alert("🚨 처리 실패: " + error.message);
             }
         }
     </script>
@@ -185,8 +194,9 @@ HTML_CONTENT = """
 async def get_index():
     return HTMLResponse(content=HTML_CONTENT)
 
+# context 변수의 기본값을 안전한 Form(default="") 로 지정하여 400 에러 방지
 @app.post("/process_audio")
-async def process_audio(audio_file: UploadFile = File(...), context: str = Form("")):
+async def process_audio(audio_file: UploadFile = File(...), context: str = Form(default="")):
     ext = os.path.splitext(audio_file.filename)[1]
     if not ext:
         ext = ".webm"
@@ -196,6 +206,10 @@ async def process_audio(audio_file: UploadFile = File(...), context: str = Form(
         temp_audio_path = temp_audio.name
 
     try:
+        # 오디오 파일 크기가 0바이트인지 검사
+        if os.path.getsize(temp_audio_path) == 0:
+            return JSONResponse(status_code=400, content={"error": "녹음된 오디오 파일이 비어있습니다. 너무 짧게 녹음되었는지 확인해 주세요."})
+
         uploaded_file = client.files.upload(file=temp_audio_path)
         
         while True:
@@ -203,7 +217,7 @@ async def process_audio(audio_file: UploadFile = File(...), context: str = Form(
             if file_info.state == "ACTIVE":
                 break
             elif file_info.state == "FAILED":
-                raise Exception("오디오 파일 처리에 실패했습니다.")
+                raise Exception("구글 서버에서 오디오 파일 처리에 실패했습니다. 파일 포맷이나 길이를 확인하세요.")
             time.sleep(2)
         
         prompt = f"""
@@ -249,6 +263,10 @@ async def process_audio(audio_file: UploadFile = File(...), context: str = Form(
         result_html = result_html.replace("\n", "<br>")
         
         return {"result": result_html, "model_used": model_name}
+
+    except Exception as e:
+        # 파이썬 내부 또는 제미나이 API 처리 중 발생한 모든 에러를 화면으로 전달
+        return JSONResponse(status_code=500, content={"error": f"API 처리 중 오류가 발생했습니다: {str(e)}"})
 
     finally:
         os.remove(temp_audio_path)
