@@ -8,7 +8,6 @@ app = FastAPI()
 # Render 서버의 API 키를 안전하게 가져옴
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-# 모든 이스케이프 문자와 정규식 충돌을 완벽하게 방지한 안전한 일반 문자열 템플릿
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ko">
@@ -202,7 +201,7 @@ HTML_TEMPLATE = """
 
                 if (!isReady) throw new Error("파일 분석 대기 시간 초과");
 
-                // 4단계: 업로드 완료된 대용량 파일을 활용해 요약 요청
+                // 4단계: 요약 요청
                 loadingText.innerText = "📝 설교 내용을 전체 수집하여 요약 노트를 구성하는 중입니다...";
 
                 const prompt = `
@@ -233,7 +232,7 @@ HTML_TEMPLATE = """
                 (전체 흐름을 파악할 수 있는 스크립트 전문 또는 상세 요약)
                 `;
 
-                // [수정 완료] URL 경로에 정확히 models/gemini-1.5-flash 구조 배치
+                // [주소 교정] v1beta/models/gemini-1.5-flash:generateContent 정석 포맷 매핑
                 const generateResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
                     method: 'POST',
                     headers: {
@@ -266,7 +265,6 @@ HTML_TEMPLATE = """
                 const resultJson = await generateResponse.json();
                 const rawText = resultJson.candidates[0].content.parts[0].text;
 
-                // [수정 완료] 파이썬 문자열 변환 시 깨지지 않는 안전한 정규식으로 마크다운 변환
                 let resultHtml = rawText;
                 resultHtml = resultHtml.replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
                 resultHtml = resultHtml.replace(/# (.*?)\\n/g, '<h3>$1</h3>\\n');
