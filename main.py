@@ -8,6 +8,7 @@ app = FastAPI()
 # Render 서버의 API 키를 안전하게 가져옴
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
+# 최신 2.5 모델과 완벽하게 호환되는 구글 GenAI 공식 브라우저 라이브러리 탑재
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ko">
@@ -15,6 +16,14 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>설교 기록 & 요약 웹앱</title>
+    <!-- 구글 최신 GenAI SDK 정식 로드 -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/genai": "https://esm.run/@google/genai"
+        }
+      }
+    </script>
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
         .section { background-color: #f4f6f7; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
@@ -35,7 +44,7 @@ HTML_TEMPLATE = """
     </style>
 </head>
 <body>
-    <h2>🎙️ 초대용량 지원 설교 요약 (구글 Files API 무제한)</h2>
+    <h2>🎙️ AI 설교 요약 (최신 Gemini 2.5 Flash & 대용량 무제한)</h2>
     
     <div class="section">
         <label><b>1. 사전 맥락 입력 (성경 본문, 고유명사 등):</b></label>
@@ -61,8 +70,13 @@ HTML_TEMPLATE = """
     
     <div id="resultBox" class="output-box" style="display:none;"></div>
 
-    <script>
+    <script type="module">
+        import { GoogleGenAI } from "@google/genai";
+
         const API_KEY = "REPLACE_WITH_GEMINI_API_KEY";
+        // 최신 규격에 맞는 API 클라이언트 선언
+        const ai = new GoogleGenAI({ apiKey: API_KEY });
+
         const contextInput = document.getElementById('context');
         const loadingContainer = document.getElementById('loadingContainer');
         const loadingText = document.getElementById('loadingText');
@@ -89,7 +103,7 @@ HTML_TEMPLATE = """
                     return;
                 }
                 const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                await processAudioWithFilesAPI(audioBlob, 'recording.webm', 'audio/webm');
+                await processAudioWithSDK(audioBlob, 'recording.webm', 'audio/webm');
                 audioChunks = [];
             };
 
@@ -120,19 +134,19 @@ HTML_TEMPLATE = """
             }
             const file = audioUpload.files[0];
             const mimeType = file.type || "audio/mp3";
-            await processAudioWithFilesAPI(file, file.name, mimeType);
+            await processAudioWithSDK(file, file.name, mimeType);
         };
 
-        async function processAudioWithFilesAPI(fileOrBlob, filename, mimeType) {
+        async function processAudioWithSDK(fileOrBlob, filename, mimeType) {
             loadingContainer.style.display = 'block';
             resultBox.style.display = 'none';
             
             const steps = [
-                "📡 초대용량 전송 채널을 생성하고 있습니다...",
-                "🔄 구글 클라우드로 끊김 없이 음성을 전송 중입니다...",
-                "🧠 대용량 오디오 파일을 활성화하고 상태를 대기하는 중입니다...",
-                "📝 인공지능이 긴 설교의 전체 흐름을 요약 구조화하고 있습니다...",
-                "✨ 최종 보고서를 생성하고 있습니다. 창을 닫지 마세요!"
+                "📡 대용량 오디오 파일을 구글 AI 전용 스토리지로 업로드 중입니다...",
+                "🔄 구글 클라우드가 대용량 음성 스트림을 고속으로 접수하고 있습니다...",
+                "🧠 인공지능이 음성 트랙 전체의 유효 상태를 분석(ACTIVE)하고 있습니다...",
+                "📝 최신 Gemini 2.5 Flash가 전체 흐름을 완벽하게 파악해 기록 중입니다...",
+                "✨ 최종 정리가 끝났습니다! 서식 양식 마무리를 짓는 중입니다..."
             ];
             
             let stepIndex = 0;
@@ -145,65 +159,25 @@ HTML_TEMPLATE = """
             }, 8500);
 
             try {
-                // 1단계: Resumable Upload 세션 시작
-                const startResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${API_KEY}`, {
-                    method: 'POST',
-                    headers: {
-                        'X-Goog-Upload-Protocol': 'resumable',
-                        'X-Goog-Upload-Command': 'start',
-                        'X-Goog-Upload-Header-Content-Length': fileOrBlob.size,
-                        'X-Goog-Upload-Header-Content-Type': mimeType,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        file: {
-                            displayName: filename
-                        }
-                    })
+                // 1. 대용량용 무제한 창구(files API)로 직접 전송
+                const uploadResult = await ai.files.upload({
+                    file: fileOrBlob,
+                    mimeType: mimeType,
+                    config: { displayName: filename }
                 });
 
-                if (!startResponse.ok) throw new Error("업로드 세션 시작 실패");
-
-                const uploadUrl = startResponse.headers.get('X-Goog-Upload-URL');
-
-                // 2단계: 실제 바이너리 데이터 청크 전송
-                const uploadResponse = await fetch(uploadUrl, {
-                    method: 'POST',
-                    headers: {
-                        'X-Goog-Upload-Offset': '0',
-                        'X-Goog-Upload-Command': 'upload, finalize'
-                    },
-                    body: fileOrBlob
-                });
-
-                if (!uploadResponse.ok) throw new Error("파일 데이터 전송 실패");
-
-                const fileInfo = await uploadResponse.json();
-                const fileUri = fileInfo.file.uri;
-                const fileName = fileInfo.file.name;
-
-                // 3단계: 파일 상태 'ACTIVE' 대기
-                let isReady = false;
-                loadingText.innerText = "🔄 구글 서버 내에서 음성 분석 준비 중입니다 (수초 소요)...";
-                
-                for (let i = 0; i < 30; i++) {
-                    const checkResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${API_KEY}`);
-                    const checkJson = await checkResponse.json();
-                    
-                    if (checkJson.state === "ACTIVE") {
-                        isReady = true;
-                        break;
-                    } else if (checkJson.state === "FAILED") {
-                        throw new Error("구글 서버 내 파일 처리 실패");
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                // 2. 구글 내부 가상 인코딩 처리 대기
+                let fileInfo = uploadResult;
+                while (fileInfo.state === "PROCESSING") {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    fileInfo = await ai.files.get({ name: uploadResult.name });
                 }
 
-                if (!isReady) throw new Error("파일 분석 대기 시간 초과");
+                if (fileInfo.state === "FAILED") {
+                    throw new Error("구글 서버 내 오디오 데이터 처리 도중 실패했습니다.");
+                }
 
-                // 4단계: 요약 요청
-                loadingText.innerText = "📝 설교 내용을 전체 수집하여 요약 노트를 구성하는 중입니다...";
-
+                // 3. 정교하게 고도화된 프롬프트 전달
                 const prompt = `
                 당신은 전문적인 설교 기록 및 요약 비서입니다.
                 제공된 오디오 파일은 교회 설교 녹음입니다.
@@ -232,40 +206,13 @@ HTML_TEMPLATE = """
                 (전체 흐름을 파악할 수 있는 스크립트 전문 또는 상세 요약)
                 `;
 
-                // [주소 교정] v1beta/models/gemini-1.5-flash:generateContent 정석 포맷 매핑
-                const generateResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        contents: [
-                            {
-                                parts: [
-                                    {
-                                        fileData: {
-                                            mimeType: mimeType,
-                                            fileUri: fileUri
-                                        }
-                                    },
-                                    {
-                                        text: prompt
-                                    }
-                                ]
-                            }
-                        ]
-                    })
+                // 4. [변경 완료] 최초 원했던 고성능 최신 모델 'gemini-2.5-flash'로 호출
+                const response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: [fileInfo, prompt],
                 });
 
-                if (!generateResponse.ok) {
-                    const errData = await generateResponse.json();
-                    throw new Error(errData.error?.message || "요약본 생성 실패");
-                }
-
-                const resultJson = await generateResponse.json();
-                const rawText = resultJson.candidates[0].content.parts[0].text;
-
-                let resultHtml = rawText;
+                let resultHtml = response.text;
                 resultHtml = resultHtml.replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
                 resultHtml = resultHtml.replace(/# (.*?)\\n/g, '<h3>$1</h3>\\n');
                 resultHtml = resultHtml.replace(/## (.*?)\\n/g, '<h4>$1</h4>\\n');
@@ -275,13 +222,11 @@ HTML_TEMPLATE = """
                 loadingContainer.style.display = 'none';
                 resultBox.style.display = 'block';
 
-                const modelInfoHtml = `<div class="model-info">💡 적용된 AI 모델: Gemini 1.5 Flash (Large Files API)</div>`;
+                const modelInfoHtml = `<div class="model-info">💡 적용된 AI 모델: Gemini 2.5 Flash (Official SDK v1beta)</div>`;
                 resultBox.innerHTML = modelInfoHtml + resultHtml;
 
-                // 5단계: 분석 완료 후 임시 파일 즉시 삭제
-                fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${API_KEY}`, {
-                    method: 'DELETE'
-                }).catch(e => console.log("임시 파일 삭제 완료 혹은 생략됨."));
+                // 5. 사용 후 즉각 삭제
+                await ai.files.delete({ name: fileInfo.name });
 
             } catch (error) {
                 clearInterval(progressInterval);
