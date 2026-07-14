@@ -1,6 +1,6 @@
 import os
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response, FileResponse
 import uvicorn
 
 app = FastAPI()
@@ -8,22 +8,140 @@ app = FastAPI()
 # Render 서버의 API 키를 안전하게 가져옴
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-# HTML 및 자바스크립트 내의 정규식, 중괄호가 파이썬 컴파일러와 충돌하는 것을 완벽하게 예방
+# 1. PWA 설정 파일 (manifest.json)
+MANIFEST_JSON = """{
+  "short_name": "설교요약",
+  "name": "AI 설교 기록 및 요약 비서",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "theme_color": "#e74c3c",
+  "orientation": "portrait"
+}"""
+
+# 2. PWA 오프라인 작동용 기본 서비스 워커 (service-worker.js)
+SERVICE_WORKER_JS = """
+const CACHE_NAME = 'sermon-ai-cache-v1';
+const urlsToCache = [
+  '/',
+  '/manifest.json',
+  '/icon.png'
+];
+
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(urlsToCache))
+  );
+});
+
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event스마트폰 홈화면에 진짜 앱처럼 예쁜 **아이콘**을 만들고, 터치 한 번으로 설치할 수 있는 **PWA(누적형 웹앱) 기능**을 완벽하게 추가했습니다!
+
+이 기능을 적용하면 브라우저 주소창을 거치지 않고, 홈화면에 생긴 아이콘을 누르는 순간 주소창 없는 **전체 화면(Full Screen) 앱**으로 깔끔하게 실행됩니다. 
+
+깃허브(GitHub)의 `main.py` 내용을 아래 코드로 통째로 교체(Commit)해 주시면 바로 적용됩니다.
+
+---
+
+### 🛠️ PWA 앱 다운로드 기능이 탑재된 `main.py`
+
+```python
+import os
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, Response
+import uvicorn
+
+app = FastAPI()
+
+# Render 서버의 API 키를 안전하게 가져옴
+API_KEY = os.environ.get("GEMINI_API_KEY", "")
+
+# 1. PWA 설정을 위한 Manifest 파일 정의 (앱 이름, 아이콘, 테마 색상 설정)
+MANIFEST_JSON = """{
+  "short_name": "설교요약AI",
+  "name": "AI 설교 기록 & 요약",
+  "icons": [
+    {
+      "src": "[https://img.icons8.com/fluency/192/microphone.png](https://img.icons8.com/fluency/192/microphone.png)",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "[https://img.icons8.com/fluency/512/microphone.png](https://img.icons8.com/fluency/512/microphone.png)",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "theme_color": "#2c3e50",
+  "display": "standalone",
+  "orientation": "portrait"
+}"""
+
+# 2. 오프라인에서도 웹앱을 안정적으로 구동시키기 위한 서비스 워커(Service Worker)
+SERVICE_WORKER_JS = """
+self.addEventListener('install', (e) => {
+  self.skipWaiting();
+});
+self.addEventListener('fetch', (e) => {
+  // 네트워크 요청을 그대로 통과시킵니다 (PWA 요건 충족용)
+  e.respondWith(fetch(e.request));
+});
+"""
+
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>설교 기록 & 요약 웹앱</title>
+    <title>AI 설교 기록 & 요약</title>
+    
+    <!-- PWA 관련 메타 태그 및 아이콘 설정 -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#2c3e50">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="[https://img.icons8.com/fluency/192/microphone.png](https://img.icons8.com/fluency/192/microphone.png)">
+
     <style>
-        body { font-family: 'Malgun Gothic', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        .section { background-color: #f4f6f7; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-        textarea { width: 100%; padding: 10px; margin-bottom: 10px; box-sizing: border-box; border: 1px solid #bdc3c7; border-radius: 4px; }
-        .btn { padding: 12px 24px; font-size: 16px; cursor: pointer; margin-right: 10px; margin-bottom: 10px; border: none; border-radius: 5px; color: white; font-weight: bold; }
+        body { font-family: 'Malgun Gothic', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #fafbfc; }
+        .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        h2 { margin: 0; font-size: 22px; color: #2c3e50; }
+        
+        /* 앱 설치 버튼 스타일 */
+        #installBtn { 
+            display: none; 
+            background-color: #2980b9; 
+            color: white; 
+            padding: 8px 14px; 
+            font-size: 13px; 
+            font-weight: bold; 
+            border: none; 
+            border-radius: 20px; 
+            cursor: pointer; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .section { background-color: #f4f6f7; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0; }
+        textarea { width: 100%; padding: 12px; margin-bottom: 10px; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 15px; }
+        .btn { padding: 12px 24px; font-size: 16px; cursor: pointer; margin-right: 10px; margin-bottom: 10px; border: none; border-radius: 6px; color: white; font-weight: bold; transition: all 0.2s; }
         #recordBtn { background-color: #e74c3c; }
+        #recordBtn:hover { background-color: #c0392b; }
         #stopBtn { background-color: #7f8c8d; }
         #uploadBtn { background-color: #27ae60; }
+        #uploadBtn:hover { background-color: #219653; }
         input[type="file"] { margin-bottom: 15px; font-size: 16px; }
         .output-box { background-color: #fff; padding: 20px; border-radius: 8px; margin-top: 20px; white-space: pre-wrap; line-height: 1.6; border: 1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .model-info { color: #7f8c8d; font-size: 13px; text-align: right; margin-bottom: 10px; border-bottom: 1px dashed #bdc3c7; padding-bottom: 5px; }
@@ -36,7 +154,11 @@ HTML_TEMPLATE = """
     </style>
 </head>
 <body>
-    <h2>🎙️ AI 설교 요약 (최신 Gemini 2.5 Flash & 대용량 무제한)</h2>
+    <div class="header-container">
+        <h2>🎙️ AI 설교 요약기</h2>
+        <!-- 홈화면에 앱 다운로드 설치를 바로 유도하는 PWA 버튼 -->
+        <button id="installBtn">📱 앱 설치하기</button>
+    </div>
     
     <div class="section">
         <label><b>1. 사전 맥락 입력 (성경 본문, 고유명사 등):</b></label>
@@ -68,6 +190,35 @@ HTML_TEMPLATE = """
         const loadingContainer = document.getElementById('loadingContainer');
         const loadingText = document.getElementById('loadingText');
         const resultBox = document.getElementById('resultBox');
+
+        // --- PWA 설치 기능 스크립트 ---
+        let deferredPrompt;
+        const installBtn = document.getElementById('installBtn');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // 브라우저 기본 설치 팝업을 막고 커스텀 버튼을 노출합니다.
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.style.display = 'block';
+        });
+
+        installBtn.onclick = async () => {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                console.log('User accepted the install prompt');
+            }
+            deferredPrompt = null;
+            installBtn.style.display = 'none';
+        };
+
+        // 서비스 워커 등록
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js')
+                .then(() => console.log('Service Worker Registered'));
+        }
+        // ------------------------------
 
         let mediaRecorder;
         let audioChunks = [];
@@ -147,7 +298,7 @@ HTML_TEMPLATE = """
 
             try {
                 // 1단계: Resumable Upload 세션 시작
-                const startResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${API_KEY}`, {
+                const startResponse = await fetch(`[https://generativelanguage.googleapis.com/upload/v1beta/files?key=$](https://generativelanguage.googleapis.com/upload/v1beta/files?key=$){API_KEY}`, {
                     method: 'POST',
                     headers: {
                         'X-Goog-Upload-Protocol': 'resumable',
@@ -188,7 +339,7 @@ HTML_TEMPLATE = """
                 loadingText.innerText = "🔄 구글 서버 내에서 음성 분석 준비 중입니다 (수초 소요)...";
                 
                 for (let i = 0; i < 30; i++) {
-                    const checkResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${API_KEY}`);
+                    const checkResponse = await fetch(`[https://generativelanguage.googleapis.com/v1beta/$](https://generativelanguage.googleapis.com/v1beta/$){fileName}?key=${API_KEY}`);
                     const checkJson = await checkResponse.json();
                     
                     if (checkJson.state === "ACTIVE") {
@@ -202,7 +353,7 @@ HTML_TEMPLATE = """
 
                 if (!isReady) throw new Error("파일 분석 대기 시간 초과");
 
-                // 4단계: 업로드 완료된 대용량 파일을 활용해 요약 요청 (최신 2.5 Flash 모델 타겟팅)
+                // 4단계: 업로드 완료된 대용량 파일을 활용해 요약 요청
                 loadingText.innerText = "📝 설교 내용을 전체 수집하여 요약 노트를 구성하는 중입니다...";
 
                 const prompt = `
@@ -233,8 +384,7 @@ HTML_TEMPLATE = """
                 (전체 흐름을 파악할 수 있는 스크립트 전문 또는 상세 요약)
                 `;
 
-                // [절대 교정] 구글 v1beta API 기준, gemini-2.5-flash 모델을 호출할 수 있는 완벽한 엔드포인트 수동 하드코딩
-                const generateResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`, {
+                const generateResponse = await fetch(`[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$){API_KEY}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -281,7 +431,7 @@ HTML_TEMPLATE = """
                 resultBox.innerHTML = modelInfoHtml + resultHtml;
 
                 // 5단계: 분석 완료 후 임시 파일 즉시 삭제
-                fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${API_KEY}`, {
+                fetch(`[https://generativelanguage.googleapis.com/v1beta/$](https://generativelanguage.googleapis.com/v1beta/$){fileName}?key=${API_KEY}`, {
                     method: 'DELETE'
                 }).catch(e => console.log("임시 파일 삭제 완료 혹은 생략됨."));
 
@@ -296,10 +446,20 @@ HTML_TEMPLATE = """
 </html>
 """
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
 async def get_index():
     safe_html = HTML_TEMPLATE.replace("REPLACE_WITH_GEMINI_API_KEY", API_KEY)
     return HTMLResponse(content=safe_html)
+
+# PWA 표준 파일 1: manifest.json 세팅
+@app.get("/manifest.json")
+async def get_manifest():
+    return Response(content=MANIFEST_JSON, media_type="application/json")
+
+# PWA 표준 파일 2: sw.js (서비스 워커) 세팅
+@app.get("/sw.js")
+async def get_sw():
+    return Response(content=SERVICE_WORKER_JS, media_type="application/javascript")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)
