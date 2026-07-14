@@ -1,26 +1,23 @@
 import os
 import tempfile
 import re
+import time
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 import uvicorn
 import nest_asyncio
 from google import genai
 
-# Spyder/Jupyter 환경에서 uvicorn 실행 시 발생하는 이벤트 루프 충돌 방지
 nest_asyncio.apply()
 
-# Gemini API 설정 (새로운 SDK 방식)
 api_key = os.environ.get("GEMINI_API_KEY")
 if not api_key:
     raise ValueError("GEMINI_API_KEY 환경 변수가 설정되지 않았습니다.")
 
-# 새 버전의 클라이언트 객체 생성
 client = genai.Client(api_key=api_key)
 
 app = FastAPI()
 
-# 프론트엔드 HTML/JS (단일 페이지 웹앱)
 HTML_CONTENT = """
 <!DOCTYPE html>
 <html lang="ko">
@@ -165,8 +162,16 @@ async def process_audio(audio_file: UploadFile = File(...), context: str = Form(
         temp_audio_path = temp_audio.name
 
     try:
-        # 1. 새로운 SDK: 파일 업로드
         uploaded_file = client.files.upload(file=temp_audio_path)
+        
+        # 파일이 활성화(ACTIVE) 상태가 될 때까지 대기
+        while True:
+            file_info = client.files.get(name=uploaded_file.name)
+            if file_info.state == "ACTIVE":
+                break
+            elif file_info.state == "FAILED":
+                raise Exception("오디오 파일 처리에 실패했습니다.")
+            time.sleep(2)
         
         prompt = f"""
         당신은 전문적인 설교 기록 및 요약 비서입니다.
@@ -196,17 +201,14 @@ async def process_audio(audio_file: UploadFile = File(...), context: str = Form(
         (전체 흐름을 파악할 수 있는 스크립트 전문 또는 상세 요약)
         """
         
-        # 2. 새로운 SDK: 최신 모델을 하드코딩하여 바로 생성 (가장 빠르고 안정적임)
         model_name = "gemini-2.5-flash"
         response = client.models.generate_content(
             model=model_name,
             contents=[uploaded_file, prompt]
         )
         
-        # 3. 새로운 SDK: 구글 서버에서 임시 파일 삭제
         client.files.delete(name=uploaded_file.name)
         
-        # 마크다운 렌더링
         result_html = response.text
         result_html = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', result_html)
         result_html = re.sub(r'# (.*?)\n', r'<h3>\1</h3>\n', result_html)
@@ -219,4 +221,4 @@ async def process_audio(audio_file: UploadFile = File(...), context: str = Form(
         os.remove(temp_audio_path)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
