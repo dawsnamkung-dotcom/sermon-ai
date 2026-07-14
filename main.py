@@ -8,7 +8,7 @@ app = FastAPI()
 # Render 서버의 API 키를 안전하게 가져옴
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-# f-string 대신 일반 문자열로 처리하여 자바스크립트 중괄호와의 충돌을 완벽히 방지합니다.
+# 모든 이스케이프 문자와 정규식 충돌을 완벽하게 방지한 안전한 일반 문자열 템플릿
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ko">
@@ -187,7 +187,7 @@ HTML_TEMPLATE = """
                 let isReady = false;
                 loadingText.innerText = "🔄 구글 서버 내에서 음성 분석 준비 중입니다 (수초 소요)...";
                 
-                for (let i = 0; i < 20; i++) {
+                for (let i = 0; i < 30; i++) {
                     const checkResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${API_KEY}`);
                     const checkJson = await checkResponse.json();
                     
@@ -208,7 +208,7 @@ HTML_TEMPLATE = """
                 const prompt = `
                 당신은 전문적인 설교 기록 및 요약 비서입니다.
                 제공된 오디오 파일은 교회 설교 녹음입니다.
-                다음의 사전 맥락(성경 본문, 고유명사)을 참고하여 내용을 정확히 파악하세요: [${contextInput.value}]
+                다음의 사전 맥락(성경 본문, 고유명사)을 참고하여 내용을 정확히 파악하세요: [` + contextInput.value + `]
                 
                 분석 후, 아래의 마크다운 템플릿 양식에 맞춰 완벽하게 구조화된 요약본을 작성해 주세요.
                 
@@ -233,6 +233,7 @@ HTML_TEMPLATE = """
                 (전체 흐름을 파악할 수 있는 스크립트 전문 또는 상세 요약)
                 `;
 
+                // [수정 완료] URL 경로에 정확히 models/gemini-1.5-flash 구조 배치
                 const generateResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
                     method: 'POST',
                     headers: {
@@ -265,7 +266,7 @@ HTML_TEMPLATE = """
                 const resultJson = await generateResponse.json();
                 const rawText = resultJson.candidates[0].content.parts[0].text;
 
-                // 마크다운 문법 정제
+                // [수정 완료] 파이썬 문자열 변환 시 깨지지 않는 안전한 정규식으로 마크다운 변환
                 let resultHtml = rawText;
                 resultHtml = resultHtml.replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
                 resultHtml = resultHtml.replace(/# (.*?)\\n/g, '<h3>$1</h3>\\n');
@@ -297,7 +298,6 @@ HTML_TEMPLATE = """
 
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
-    # 파이썬 f-string 대신 문자열 치환(.replace)을 사용하여 괄호 충돌을 피합니다.
     safe_html = HTML_TEMPLATE.replace("REPLACE_WITH_GEMINI_API_KEY", API_KEY)
     return HTMLResponse(content=safe_html)
 
