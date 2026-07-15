@@ -1,6 +1,6 @@
 import os
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse
 import uvicorn
 
 app = FastAPI()
@@ -8,82 +8,22 @@ app = FastAPI()
 # Render 서버의 API 키를 안전하게 가져옴
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-# 1. PWA 설정을 위한 Manifest 파일 정의 (앱 이름, 아이콘, 테마 색상 설정)
-MANIFEST_JSON = """{
-  "short_name": "설교요약AI",
-  "name": "AI 설교 기록 & 요약",
-  "icons": [
-    {
-      "src": "https://img.icons8.com/fluency/192/microphone.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "https://img.icons8.com/fluency/512/microphone.png",
-      "type": "image/png",
-      "sizes": "512x512"
-    }
-  ],
-  "start_url": "/",
-  "background_color": "#ffffff",
-  "theme_color": "#2c3e50",
-  "display": "standalone",
-  "orientation": "portrait"
-}"""
-
-# 2. 서비스 워커(Service Worker)
-SERVICE_WORKER_JS = """
-self.addEventListener('install', (e) => {
-  self.skipWaiting();
-});
-self.addEventListener('fetch', (e) => {
-  e.respondWith(fetch(e.request));
-});
-"""
-
-# [수정 완료] f 접두사를 확실히 제거하여 파이썬과 CSS 중괄호간의 충돌을 원천 차단했습니다.
+# HTML 및 자바스크립트 내의 정규식, 중괄호가 파이썬 컴파일러와 충돌하는 것을 완벽하게 예방
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 설교 기록 & 요약</title>
-    
-    <!-- PWA 관련 메타 태그 및 아이콘 설정 -->
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#2c3e50">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="https://img.icons8.com/fluency/192/microphone.png">
-
+    <title>설교 기록 & 요약 웹앱</title>
     <style>
-        body { font-family: 'Malgun Gothic', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #fafbfc; }
-        .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        h2 { margin: 0; font-size: 22px; color: #2c3e50; }
-        
-        /* 앱 설치 버튼 스타일 */
-        #installBtn { 
-            display: none; 
-            background-color: #2980b9; 
-            color: white; 
-            padding: 8px 14px; 
-            font-size: 13px; 
-            font-weight: bold; 
-            border: none; 
-            border-radius: 20px; 
-            cursor: pointer; 
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        
-        .section { background-color: #f4f6f7; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0; }
-        textarea { width: 100%; padding: 12px; margin-bottom: 10px; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 15px; }
-        .btn { padding: 12px 24px; font-size: 16px; cursor: pointer; margin-right: 10px; margin-bottom: 10px; border: none; border-radius: 6px; color: white; font-weight: bold; transition: all 0.2s; }
+        body { font-family: 'Malgun Gothic', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .section { background-color: #f4f6f7; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        textarea { width: 100%; padding: 10px; margin-bottom: 10px; box-sizing: border-box; border: 1px solid #bdc3c7; border-radius: 4px; }
+        .btn { padding: 12px 24px; font-size: 16px; cursor: pointer; margin-right: 10px; margin-bottom: 10px; border: none; border-radius: 5px; color: white; font-weight: bold; }
         #recordBtn { background-color: #e74c3c; }
-        #recordBtn:hover { background-color: #c0392b; }
         #stopBtn { background-color: #7f8c8d; }
         #uploadBtn { background-color: #27ae60; }
-        #uploadBtn:hover { background-color: #219653; }
         input[type="file"] { margin-bottom: 15px; font-size: 16px; }
         .output-box { background-color: #fff; padding: 20px; border-radius: 8px; margin-top: 20px; white-space: pre-wrap; line-height: 1.6; border: 1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .model-info { color: #7f8c8d; font-size: 13px; text-align: right; margin-bottom: 10px; border-bottom: 1px dashed #bdc3c7; padding-bottom: 5px; }
@@ -96,11 +36,7 @@ HTML_TEMPLATE = """
     </style>
 </head>
 <body>
-    <div class="header-container">
-        <h2>🎙️ AI 설교 요약기</h2>
-        <!-- 홈화면에 앱 다운로드 설치를 바로 유도하는 PWA 버튼 -->
-        <button id="installBtn">📱 앱 설치하기</button>
-    </div>
+    <h2>🎙️ AI 설교 요약 (최신 Gemini 2.5 Flash & 대용량 무제한)</h2>
     
     <div class="section">
         <label><b>1. 사전 맥락 입력 (성경 본문, 고유명사 등):</b></label>
@@ -132,35 +68,6 @@ HTML_TEMPLATE = """
         const loadingContainer = document.getElementById('loadingContainer');
         const loadingText = document.getElementById('loadingText');
         const resultBox = document.getElementById('resultBox');
-
-        // --- PWA 설치 기능 스크립트 ---
-        let deferredPrompt;
-        const installBtn = document.getElementById('installBtn');
-
-        window.addEventListener('beforeinstallprompt', (e) => {
-            // 브라우저 기본 설치 팝업을 막고 커스텀 버튼을 노출합니다.
-            e.preventDefault();
-            deferredPrompt = e;
-            installBtn.style.display = 'block';
-        });
-
-        installBtn.onclick = async () => {
-            if (!deferredPrompt) return;
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
-            if (outcome === 'accepted') {
-                console.log('User accepted the install prompt');
-            }
-            deferredPrompt = null;
-            installBtn.style.display = 'none';
-        };
-
-        // 서비스 워커 등록
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js')
-                .then(() => console.log('Service Worker Registered'));
-        }
-        // ------------------------------
 
         let mediaRecorder;
         let audioChunks = [];
@@ -295,7 +202,7 @@ HTML_TEMPLATE = """
 
                 if (!isReady) throw new Error("파일 분석 대기 시간 초과");
 
-                // 4단계: 업로드 완료된 대용량 파일을 활용해 요약 요청
+                // 4단계: 업로드 완료된 대용량 파일을 활용해 요약 요청 (최신 2.5 Flash 모델 타겟팅)
                 loadingText.innerText = "📝 설교 내용을 전체 수집하여 요약 노트를 구성하는 중입니다...";
 
                 const prompt = `
@@ -326,6 +233,7 @@ HTML_TEMPLATE = """
                 (전체 흐름을 파악할 수 있는 스크립트 전문 또는 상세 요약)
                 `;
 
+                // [절대 교정] 구글 v1beta API 기준, gemini-2.5-flash 모델을 호출할 수 있는 완벽한 엔드포인트 수동 하드코딩
                 const generateResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`, {
                     method: 'POST',
                     headers: {
@@ -360,7 +268,7 @@ HTML_TEMPLATE = """
 
                 // 마크다운 문법 정제
                 let resultHtml = rawText;
-                resultHtml = resultHtml.replace(/\\*\\*(.*?)\\*\\/g, '<b>$1</b>');
+                resultHtml = resultHtml.replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
                 resultHtml = resultHtml.replace(/# (.*?)\\n/g, '<h3>$1</h3>\\n');
                 resultHtml = resultHtml.replace(/## (.*?)\\n/g, '<h4>$1</h4>\\n');
                 resultHtml = resultHtml.replace(/\\n/g, '<br>');
@@ -388,20 +296,10 @@ HTML_TEMPLATE = """
 </html>
 """
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def get_index():
     safe_html = HTML_TEMPLATE.replace("REPLACE_WITH_GEMINI_API_KEY", API_KEY)
     return HTMLResponse(content=safe_html)
-
-# PWA 표준 파일 1: manifest.json 세팅
-@app.get("/manifest.json")
-async def get_manifest():
-    return Response(content=MANIFEST_JSON, media_type="application/json")
-
-# PWA 표준 파일 2: sw.js (서비스 워커) 세팅
-@app.get("/sw.js")
-async def get_sw():
-    return Response(content=SERVICE_WORKER_JS, media_type="application/javascript")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)
