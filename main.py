@@ -1,63 +1,5 @@
 import os
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, Response, FileResponse
-import uvicorn
-
-app = FastAPI()
-
-# Render 서버의 API 키를 안전하게 가져옴 
-API_KEY = os.environ.get("GEMINI_API_KEY", "")
-
-# 1. PWA 설정 파일 (manifest.json)
-MANIFEST_JSON = """{
-  "short_name": "설교요약",
-  "name": "AI 설교 기록 및 요약 비서",
-  "icons": [
-    {
-      "src": "/icon.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "any maskable"
-    }
-  ],
-  "start_url": "/",
-  "background_color": "#ffffff",
-  "display": "standalone",
-  "theme_color": "#e74c3c",
-  "orientation": "portrait"
-}"""
-
-# 2. PWA 오프라인 작동용 기본 서비스 워커 (service-worker.js)
-SERVICE_WORKER_JS = """
-const CACHE_NAME = 'sermon-ai-cache-v1';
-const urlsToCache = [
-  '/',
-  '/manifest.json',
-  '/icon.png'
-];
-
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
-  );
-});
-
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event스마트폰 홈화면에 진짜 앱처럼 예쁜 **아이콘**을 만들고, 터치 한 번으로 설치할 수 있는 **PWA(누적형 웹앱) 기능**을 완벽하게 추가했습니다!
-
-이 기능을 적용하면 브라우저 주소창을 거치지 않고, 홈화면에 생긴 아이콘을 누르는 순간 주소창 없는 **전체 화면(Full Screen) 앱**으로 깔끔하게 실행됩니다. 
-
-깃허브(GitHub)의 `main.py` 내용을 아래 코드로 통째로 교체(Commit)해 주시면 바로 적용됩니다.
-
----
-
-### 🛠️ PWA 앱 다운로드 기능이 탑재된 `main.py`
-
-```python
-import os
-from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, Response
 import uvicorn
 
@@ -72,12 +14,12 @@ MANIFEST_JSON = """{
   "name": "AI 설교 기록 & 요약",
   "icons": [
     {
-      "src": "[https://img.icons8.com/fluency/192/microphone.png](https://img.icons8.com/fluency/192/microphone.png)",
+      "src": "https://img.icons8.com/fluency/192/microphone.png",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "[https://img.icons8.com/fluency/512/microphone.png](https://img.icons8.com/fluency/512/microphone.png)",
+      "src": "https://img.icons8.com/fluency/512/microphone.png",
       "type": "image/png",
       "sizes": "512x512"
     }
@@ -89,17 +31,17 @@ MANIFEST_JSON = """{
   "orientation": "portrait"
 }"""
 
-# 2. 오프라인에서도 웹앱을 안정적으로 구동시키기 위한 서비스 워커(Service Worker)
+# 2. 서비스 워커(Service Worker)
 SERVICE_WORKER_JS = """
 self.addEventListener('install', (e) => {
   self.skipWaiting();
 });
 self.addEventListener('fetch', (e) => {
-  // 네트워크 요청을 그대로 통과시킵니다 (PWA 요건 충족용)
   e.respondWith(fetch(e.request));
 });
 """
 
+# [수정 완료] f 접두사를 확실히 제거하여 파이썬과 CSS 중괄호간의 충돌을 원천 차단했습니다.
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ko">
@@ -113,7 +55,7 @@ HTML_TEMPLATE = """
     <meta name="theme-color" content="#2c3e50">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="[https://img.icons8.com/fluency/192/microphone.png](https://img.icons8.com/fluency/192/microphone.png)">
+    <link rel="apple-touch-icon" href="https://img.icons8.com/fluency/192/microphone.png">
 
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #fafbfc; }
@@ -298,7 +240,7 @@ HTML_TEMPLATE = """
 
             try {
                 // 1단계: Resumable Upload 세션 시작
-                const startResponse = await fetch(`[https://generativelanguage.googleapis.com/upload/v1beta/files?key=$](https://generativelanguage.googleapis.com/upload/v1beta/files?key=$){API_KEY}`, {
+                const startResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${API_KEY}`, {
                     method: 'POST',
                     headers: {
                         'X-Goog-Upload-Protocol': 'resumable',
@@ -339,7 +281,7 @@ HTML_TEMPLATE = """
                 loadingText.innerText = "🔄 구글 서버 내에서 음성 분석 준비 중입니다 (수초 소요)...";
                 
                 for (let i = 0; i < 30; i++) {
-                    const checkResponse = await fetch(`[https://generativelanguage.googleapis.com/v1beta/$](https://generativelanguage.googleapis.com/v1beta/$){fileName}?key=${API_KEY}`);
+                    const checkResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${API_KEY}`);
                     const checkJson = await checkResponse.json();
                     
                     if (checkJson.state === "ACTIVE") {
@@ -384,7 +326,7 @@ HTML_TEMPLATE = """
                 (전체 흐름을 파악할 수 있는 스크립트 전문 또는 상세 요약)
                 `;
 
-                const generateResponse = await fetch(`[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$){API_KEY}`, {
+                const generateResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -418,7 +360,7 @@ HTML_TEMPLATE = """
 
                 // 마크다운 문법 정제
                 let resultHtml = rawText;
-                resultHtml = resultHtml.replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
+                resultHtml = resultHtml.replace(/\\*\\*(.*?)\\*\\/g, '<b>$1</b>');
                 resultHtml = resultHtml.replace(/# (.*?)\\n/g, '<h3>$1</h3>\\n');
                 resultHtml = resultHtml.replace(/## (.*?)\\n/g, '<h4>$1</h4>\\n');
                 resultHtml = resultHtml.replace(/\\n/g, '<br>');
@@ -431,7 +373,7 @@ HTML_TEMPLATE = """
                 resultBox.innerHTML = modelInfoHtml + resultHtml;
 
                 // 5단계: 분석 완료 후 임시 파일 즉시 삭제
-                fetch(`[https://generativelanguage.googleapis.com/v1beta/$](https://generativelanguage.googleapis.com/v1beta/$){fileName}?key=${API_KEY}`, {
+                fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${API_KEY}`, {
                     method: 'DELETE'
                 }).catch(e => console.log("임시 파일 삭제 완료 혹은 생략됨."));
 
