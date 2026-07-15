@@ -5,7 +5,7 @@ import uvicorn
 
 app = FastAPI()
 
-# Render 서버의 API 키를 안전하게 가져옴
+# Render 서버의 API 키를 안전하게 가져옴 
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 # 1. PWA 설정 파일 (manifest.json)
