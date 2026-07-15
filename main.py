@@ -1,6 +1,6 @@
 import os
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 import uvicorn
 
 app = FastAPI()
@@ -8,7 +8,40 @@ app = FastAPI()
 # Render 서버의 API 키를 안전하게 가져옴
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-# HTML 및 자바스크립트 내의 정규식, 중괄호가 파이썬 컴파일러와 충돌하는 것을 완벽하게 예방
+# 1. PWA 설정을 위한 Manifest 파일 정의 (앱 이름 및 고해상도 공용 마이크 아이콘 매핑)
+MANIFEST_JSON = """{
+  "short_name": "설교요약AI",
+  "name": "AI 설교 기록 & 요약 비서",
+  "icons": [
+    {
+      "src": "https://img.icons8.com/fluency/192/microphone.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://img.icons8.com/fluency/512/microphone.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "theme_color": "#2c3e50",
+  "display": "standalone",
+  "orientation": "portrait"
+}"""
+
+# 2. PWA 작동을 위한 서비스 워커 세팅 (오프라인 통과 구조)
+SERVICE_WORKER_JS = """
+self.addEventListener('install', (e) => {
+  self.skipWaiting();
+});
+self.addEventListener('fetch', (e) => {
+  e.respondWith(fetch(e.request));
+});
+"""
+
+# f-string을 쓰지 않는 순수 문자열이므로 중괄호({}) 충돌이 절대 발생하지 않습니다.
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ko">
@@ -16,8 +49,37 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>설교 기록 & 요약 웹앱</title>
+    
+    <!-- PWA 환경 파일 링크 및 iOS 환경 지원 메타태그 설정 -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#2c3e50">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="https://img.icons8.com/fluency/192/microphone.png">
+
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        
+        /* 앱 타이틀과 설치 버튼 배치를 위한 헤더 정렬 */
+        .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        h2 { margin: 0; font-size: 20px; }
+        
+        /* 홈화면 전용 앱 다운로드 설치 버튼 스타일 */
+        #installBtn { 
+            display: none; 
+            background-color: #2980b9; 
+            color: white; 
+            padding: 8px 14px; 
+            font-size: 13px; 
+            font-weight: bold; 
+            border: none; 
+            border-radius: 20px; 
+            cursor: pointer; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: background-color 0.2s;
+        }
+        #installBtn:hover { background-color: #1f618d; }
+
         .section { background-color: #f4f6f7; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
         textarea { width: 100%; padding: 10px; margin-bottom: 10px; box-sizing: border-box; border: 1px solid #bdc3c7; border-radius: 4px; }
         .btn { padding: 12px 24px; font-size: 16px; cursor: pointer; margin-right: 10px; margin-bottom: 10px; border: none; border-radius: 5px; color: white; font-weight: bold; }
@@ -36,7 +98,11 @@ HTML_TEMPLATE = """
     </style>
 </head>
 <body>
-    <h2>🎙️ AI 설교 요약 (최신 Gemini 2.5 Flash & 대용량 무제한)</h2>
+    <div class="header-container">
+        <h2>🎙️ AI 설교 요약 (최신 Gemini 2.5 Flash & 대용량 무제한)</h2>
+        <!-- 클릭 시 앱 설치를 띄우는 버튼 -->
+        <button id="installBtn">📱 앱 다운로드</button>
+    </div>
     
     <div class="section">
         <label><b>1. 사전 맥락 입력 (성경 본문, 고유명사 등):</b></label>
@@ -68,6 +134,34 @@ HTML_TEMPLATE = """
         const loadingContainer = document.getElementById('loadingContainer');
         const loadingText = document.getElementById('loadingText');
         const resultBox = document.getElementById('resultBox');
+
+        // --- 1) PWA 브라우저 설치 프로프스 수집 스크립트 ---
+        let deferredPrompt;
+        const installBtn = document.getElementById('installBtn');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.style.display = 'block'; // 지원 브라우저에서 다운로드 버튼 활성화
+        });
+
+        installBtn.onclick = async () => {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                console.log('User accepted the PWA install.');
+            }
+            deferredPrompt = null;
+            installBtn.style.display = 'none';
+        };
+
+        // 서비스 워커 자동 등록
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js')
+                .then(() => console.log('Service Worker Active'));
+        }
+        // ------------------------------------------------
 
         let mediaRecorder;
         let audioChunks = [];
@@ -233,7 +327,6 @@ HTML_TEMPLATE = """
                 (전체 흐름을 파악할 수 있는 스크립트 전문 또는 상세 요약)
                 `;
 
-                // [절대 교정] 구글 v1beta API 기준, gemini-2.5-flash 모델을 호출할 수 있는 완벽한 엔드포인트 수동 하드코딩
                 const generateResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`, {
                     method: 'POST',
                     headers: {
@@ -300,6 +393,16 @@ HTML_TEMPLATE = """
 async def get_index():
     safe_html = HTML_TEMPLATE.replace("REPLACE_WITH_GEMINI_API_KEY", API_KEY)
     return HTMLResponse(content=safe_html)
+
+# PWA 표준 연동 파일 1: manifest.json 세팅
+@app.get("/manifest.json")
+async def get_manifest():
+    return Response(content=MANIFEST_JSON, media_type="application/json")
+
+# PWA 표준 연동 파일 2: sw.js (서비스 워커) 세팅
+@app.get("/sw.js")
+async def get_sw():
+    return Response(content=SERVICE_WORKER_JS, media_type="application/javascript")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)
