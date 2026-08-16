@@ -5,10 +5,8 @@ import uvicorn
 
 app = FastAPI()
 
-# Render 서버의 API 키를 안전하게 가져옴
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-# 1. PWA 설정을 위한 Manifest 파일 정의 (앱 이름 및 고해상도 공용 마이크 아이콘 매핑)
 MANIFEST_JSON = """{
   "short_name": "설교요약AI",
   "name": "AI 설교 기록 & 요약 비서",
@@ -31,7 +29,6 @@ MANIFEST_JSON = """{
   "orientation": "portrait"
 }"""
 
-# 2. PWA 작동을 위한 서비스 워커 세팅 (오프라인 통과 구조)
 SERVICE_WORKER_JS = """
 self.addEventListener('install', (e) => {
   self.skipWaiting();
@@ -41,7 +38,6 @@ self.addEventListener('fetch', (e) => {
 });
 """
 
-# f-string을 쓰지 않는 순수 문자열이므로 중괄호({}) 충돌이 절대 발생하지 않습니다.
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ko">
@@ -50,7 +46,6 @@ HTML_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>설교 기록 & 요약 웹앱</title>
     
-    <!-- PWA 환경 파일 링크 및 iOS 환경 지원 메타태그 설정 -->
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#2c3e50">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -59,12 +54,9 @@ HTML_TEMPLATE = """
 
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        
-        /* 앱 타이틀과 설치 버튼 배치를 위한 헤더 정렬 */
         .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         h2 { margin: 0; font-size: 20px; }
         
-        /* 홈화면 전용 앱 다운로드 설치 버튼 스타일 */
         #installBtn { 
             display: none; 
             background-color: #2980b9; 
@@ -85,8 +77,26 @@ HTML_TEMPLATE = """
         .btn { padding: 12px 24px; font-size: 16px; cursor: pointer; margin-right: 10px; margin-bottom: 10px; border: none; border-radius: 5px; color: white; font-weight: bold; }
         #recordBtn { background-color: #e74c3c; }
         #stopBtn { background-color: #7f8c8d; }
+        #toggleScriptBtn { background-color: #34495e; display: none; }
         #uploadBtn { background-color: #27ae60; }
         input[type="file"] { margin-bottom: 15px; font-size: 16px; }
+        
+        .live-script-box { 
+            display: none; 
+            background-color: #ffffff; 
+            border: 2px dashed #3498db; 
+            border-radius: 8px; 
+            padding: 15px; 
+            margin-top: 15px; 
+            max-height: 180px; 
+            overflow-y: auto; 
+            font-size: 14px; 
+            line-height: 1.6; 
+            color: #2c3e50; 
+        }
+        .live-script-header { font-weight: bold; color: #2980b9; margin-bottom: 8px; font-size: 13px; }
+        .interim-text { color: #95a5a6; }
+
         .output-box { background-color: #fff; padding: 20px; border-radius: 8px; margin-top: 20px; white-space: pre-wrap; line-height: 1.6; border: 1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .model-info { color: #7f8c8d; font-size: 13px; text-align: right; margin-bottom: 10px; border-bottom: 1px dashed #bdc3c7; padding-bottom: 5px; }
         hr { border: 0; height: 1px; background: #dcdde1; margin: 20px 0; }
@@ -95,12 +105,13 @@ HTML_TEMPLATE = """
         .spinner { display: inline-block; width: 40px; height: 40px; border: 4px solid rgba(41, 128, 185, 0.2); border-radius: 50%; border-top-color: #2980b9; animation: spin 1s ease-in-out infinite; margin-bottom: 15px; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .loading-text { color: #2c3e50; font-size: 16px; font-weight: bold; transition: all 0.5s ease; }
+        .timer-badge { display: inline-block; margin-top: 8px; font-size: 13px; color: #7f8c8d; }
+        .status-badge { font-size: 12px; color: #27ae60; margin-left: 5px; font-weight: normal; }
     </style>
 </head>
 <body>
     <div class="header-container">
-        <h2>🎙️ AI 설교 요약 (최신 Gemini 2.5 Flash & 대용량 무제한)</h2>
-        <!-- 클릭 시 앱 설치를 띄우는 버튼 -->
+        <h2>🎙️ AI 설교 요약 (백그라운드 & 100MB+ 지원)</h2>
         <button id="installBtn">📱 앱 다운로드</button>
     </div>
     
@@ -113,10 +124,16 @@ HTML_TEMPLATE = """
         <label><b>2-A. 실시간 녹음하기:</b></label><br>
         <button id="recordBtn" class="btn">🔴 녹음 시작</button>
         <button id="stopBtn" class="btn" disabled>⏹️ 녹음 종료 및 요약하기</button>
+        <button id="toggleScriptBtn" class="btn">📜 실시간 스크립트 보기</button>
         
+        <div id="liveScriptBox" class="live-script-box">
+            <div class="live-script-header">🔴 실시간 음성 인식 중 <span class="status-badge">(화면 자동 꺼짐 방지 활성)</span>:</div>
+            <div id="liveScriptContent">말씀하시는 내용이 여기에 실시간으로 표시됩니다...</div>
+        </div>
+
         <hr>
         
-        <label><b>2-B. 기존 녹음 파일 업로드 (MP3, M4A 등):</b></label><br>
+        <label><b>2-B. 기존 녹음 파일 업로드 (100MB 이상 가능):</b></label><br>
         <input type="file" id="audioUpload" accept="audio/*"><br>
         <button id="uploadBtn" class="btn">📁 파일 업로드 및 요약하기</button>
     </div>
@@ -124,6 +141,7 @@ HTML_TEMPLATE = """
     <div id="loadingContainer" class="loading-container">
         <div class="spinner"></div>
         <div id="loadingText" class="loading-text">분석 준비 중...</div>
+        <div id="timerText" class="timer-badge"></div>
     </div>
     
     <div id="resultBox" class="output-box" style="display:none;"></div>
@@ -133,16 +151,16 @@ HTML_TEMPLATE = """
         const contextInput = document.getElementById('context');
         const loadingContainer = document.getElementById('loadingContainer');
         const loadingText = document.getElementById('loadingText');
+        const timerText = document.getElementById('timerText');
         const resultBox = document.getElementById('resultBox');
 
-        // --- 1) PWA 브라우저 설치 프로프스 수집 스크립트 ---
         let deferredPrompt;
         const installBtn = document.getElementById('installBtn');
 
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             deferredPrompt = e;
-            installBtn.style.display = 'block'; // 지원 브라우저에서 다운로드 버튼 활성화
+            installBtn.style.display = 'block';
         });
 
         installBtn.onclick = async () => {
@@ -150,25 +168,104 @@ HTML_TEMPLATE = """
             deferredPrompt.prompt();
             const { outcome } = await deferredPrompt.userChoice;
             if (outcome === 'accepted') {
-                console.log('User accepted the PWA install.');
+                console.log('User accepted PWA install');
             }
             deferredPrompt = null;
             installBtn.style.display = 'none';
         };
 
-        // 서비스 워커 자동 등록
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js')
                 .then(() => console.log('Service Worker Active'));
         }
-        // ------------------------------------------------
 
         let mediaRecorder;
         let audioChunks = [];
+        let wakeLock = null; // 화면 꺼짐 방지 락
+        let audioContext = null; // 백그라운드 오디오 유지용
         const recordBtn = document.getElementById('recordBtn');
         const stopBtn = document.getElementById('stopBtn');
+        const toggleScriptBtn = document.getElementById('toggleScriptBtn');
+        const liveScriptBox = document.getElementById('liveScriptBox');
+        const liveScriptContent = document.getElementById('liveScriptContent');
+
+        let speechRecognizer = null;
+        let finalTranscript = '';
+        let isRecording = false;
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            speechRecognizer = new SpeechRecognition();
+            speechRecognizer.continuous = true;
+            speechRecognizer.interimResults = true;
+            speechRecognizer.lang = 'ko-KR';
+
+            speechRecognizer.onresult = (event) => {
+                let interimTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript + ' ';
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+                liveScriptContent.innerHTML = finalTranscript + '<span class="interim-text">' + interimTranscript + '</span>';
+                liveScriptBox.scrollTop = liveScriptBox.scrollHeight;
+            };
+
+            speechRecognizer.onend = () => {
+                if (isRecording) {
+                    try { speechRecognizer.start(); } catch (e) {}
+                }
+            };
+        }
+
+        let isScriptVisible = false;
+        toggleScriptBtn.onclick = () => {
+            isScriptVisible = !isScriptVisible;
+            if (isScriptVisible) {
+                liveScriptBox.style.display = 'block';
+                toggleScriptBtn.innerText = '📜 스크립트 숨기기';
+            } else {
+                liveScriptBox.style.display = 'none';
+                toggleScriptBtn.innerText = '📜 실시간 스크립트 보기';
+            }
+        };
+
+        // 화면 꺼짐 방지 요청 함수
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    wakeLock.addEventListener('release', () => {
+                        console.log('Wake Lock released');
+                    });
+                }
+            } catch (err) {
+                console.log('WakeLock error:', err);
+            }
+        }
 
         recordBtn.onclick = async () => {
+            // 1. 화면 꺼짐 방지 활성화
+            await requestWakeLock();
+
+            // 2. 백그라운드 오디오 세션 활성화
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtx) {
+                    audioContext = new AudioCtx();
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    gainNode.gain.value = 0.0001; // 무음 유지
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    oscillator.start();
+                }
+            } catch (e) {
+                console.log('AudioContext keep-alive init failed:', e);
+            }
+
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
             
@@ -189,24 +286,75 @@ HTML_TEMPLATE = """
             };
 
             mediaRecorder.start(1000);
+            isRecording = true;
+            finalTranscript = '';
+            liveScriptContent.innerText = '말씀하시는 내용이 여기에 실시간으로 표시됩니다...';
+
+            if (speechRecognizer) {
+                try { speechRecognizer.start(); } catch (e) {}
+            }
+
             recordBtn.disabled = true;
             recordBtn.style.backgroundColor = '#c0392b';
             recordBtn.innerText = '🔴 녹음 중...';
             stopBtn.disabled = false;
             stopBtn.style.backgroundColor = '#34495e';
+            toggleScriptBtn.style.display = 'inline-block';
         };
 
         stopBtn.onclick = () => {
+            isRecording = false;
+
+            // 화면 꺼짐 방지 및 오디오 컨텍스트 해제
+            if (wakeLock !== null) {
+                wakeLock.release();
+                wakeLock = null;
+            }
+            if (audioContext && audioContext.state !== 'closed') {
+                audioContext.close();
+            }
+
+            if (speechRecognizer) {
+                try { speechRecognizer.stop(); } catch (e) {}
+            }
             mediaRecorder.stop();
             recordBtn.disabled = false;
             recordBtn.style.backgroundColor = '#e74c3c';
             recordBtn.innerText = '🔴 녹음 시작';
             stopBtn.disabled = true;
             stopBtn.style.backgroundColor = '#7f8c8d';
+            toggleScriptBtn.style.display = 'none';
+            liveScriptBox.style.display = 'none';
+            isScriptVisible = false;
+            toggleScriptBtn.innerText = '📜 실시간 스크립트 보기';
         };
+
+        // 창이 다시 활성화되었을 때 WakeLock 재설정
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible' && isRecording) {
+                await requestWakeLock();
+            }
+        });
 
         const audioUpload = document.getElementById('audioUpload');
         const uploadBtn = document.getElementById('uploadBtn');
+
+        function getMimeType(file) {
+            if (file.type && file.type.startsWith('audio/')) {
+                return file.type;
+            }
+            const ext = file.name.split('.').pop().toLowerCase();
+            const map = {
+                'mp3': 'audio/mp3',
+                'm4a': 'audio/mp4',
+                'aac': 'audio/aac',
+                'wav': 'audio/wav',
+                'ogg': 'audio/ogg',
+                'flac': 'audio/flac',
+                'webm': 'audio/webm'
+            };
+            return map[ext] || 'audio/mp3';
+        }
 
         uploadBtn.onclick = async () => {
             if (audioUpload.files.length === 0) {
@@ -214,33 +362,26 @@ HTML_TEMPLATE = """
                 return;
             }
             const file = audioUpload.files[0];
-            const mimeType = file.type || "audio/mp3";
+            const mimeType = getMimeType(file);
             await processAudioWithFilesAPI(file, file.name, mimeType);
         };
 
         async function processAudioWithFilesAPI(fileOrBlob, filename, mimeType) {
             loadingContainer.style.display = 'block';
             resultBox.style.display = 'none';
+            timerText.innerText = '';
             
-            const steps = [
-                "📡 초대용량 전송 채널을 생성하고 있습니다...",
-                "🔄 구글 클라우드로 끊김 없이 음성을 전송 중입니다...",
-                "🧠 대용량 오디오 파일을 활성화하고 상태를 대기하는 중입니다...",
-                "📝 인공지능이 긴 설교의 전체 흐름을 요약 구조화하고 있습니다...",
-                "✨ 최종 보고서를 생성하고 있습니다. 창을 닫지 마세요!"
-            ];
-            
-            let stepIndex = 0;
-            loadingText.innerText = steps[stepIndex];
-            const progressInterval = setInterval(() => {
-                stepIndex++;
-                if (stepIndex < steps.length) {
-                    loadingText.innerText = steps[stepIndex];
-                }
-            }, 8500);
+            let elapsedSec = 0;
+            const timerInterval = setInterval(() => {
+                elapsedSec++;
+                const min = Math.floor(elapsedSec / 60);
+                const sec = elapsedSec % 60;
+                timerText.innerText = `⏱️ 경과 시간: ${min > 0 ? min + '분 ' : ''}${sec}초 (대용량 파일은 1~3분 소요됩니다)`;
+            }, 1000);
 
             try {
-                // 1단계: Resumable Upload 세션 시작
+                loadingText.innerText = `📡 ${Math.round(fileOrBlob.size / (1024 * 1024))}MB 대용량 전송 세션을 생성하는 중입니다...`;
+
                 const startResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${API_KEY}`, {
                     method: 'POST',
                     headers: {
@@ -257,11 +398,14 @@ HTML_TEMPLATE = """
                     })
                 });
 
-                if (!startResponse.ok) throw new Error("업로드 세션 시작 실패");
+                if (!startResponse.ok) {
+                    const errText = await startResponse.text();
+                    throw new Error("업로드 세션 시작 실패: " + errText);
+                }
 
                 const uploadUrl = startResponse.headers.get('X-Goog-Upload-URL');
 
-                // 2단계: 실제 바이너리 데이터 청크 전송
+                loadingText.innerText = "🔄 구글 클라우드로 대용량 오디오를 고속 전송 중입니다...";
                 const uploadResponse = await fetch(uploadUrl, {
                     method: 'POST',
                     headers: {
@@ -271,17 +415,19 @@ HTML_TEMPLATE = """
                     body: fileOrBlob
                 });
 
-                if (!uploadResponse.ok) throw new Error("파일 데이터 전송 실패");
+                if (!uploadResponse.ok) {
+                    const errText = await uploadResponse.text();
+                    throw new Error("파일 데이터 전송 실패: " + errText);
+                }
 
                 const fileInfo = await uploadResponse.json();
                 const fileUri = fileInfo.file.uri;
                 const fileName = fileInfo.file.name;
 
-                // 3단계: 파일 상태 'ACTIVE' 대기
                 let isReady = false;
-                loadingText.innerText = "🔄 구글 서버 내에서 음성 분석 준비 중입니다 (수초 소요)...";
+                loadingText.innerText = "🧠 구글 AI가 대용량 음성 데이터를 인덱싱하고 있습니다 (잠시만 기다려주세요)...";
                 
-                for (let i = 0; i < 30; i++) {
+                for (let i = 0; i < 120; i++) {
                     const checkResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${API_KEY}`);
                     const checkJson = await checkResponse.json();
                     
@@ -289,15 +435,14 @@ HTML_TEMPLATE = """
                         isReady = true;
                         break;
                     } else if (checkJson.state === "FAILED") {
-                        throw new Error("구글 서버 내 파일 처리 실패");
+                        throw new Error("구글 서버 내 파일 처리 실패 (오디오 손상 또는 미지원 형식)");
                     }
                     await new Promise(resolve => setTimeout(resolve, 2000));
                 }
 
-                if (!isReady) throw new Error("파일 분석 대기 시간 초과");
+                if (!isReady) throw new Error("파일 분석 대기 시간 초과 (4분 초과)");
 
-                // 4단계: 업로드 완료된 대용량 파일을 활용해 요약 요청 (최신 2.5 Flash 모델 타겟팅)
-                loadingText.innerText = "📝 설교 내용을 전체 수집하여 요약 노트를 구성하는 중입니다...";
+                loadingText.innerText = "📝 전체 설교 내용을 분석하여 구조화 요약본을 작성 중입니다...";
 
                 const prompt = `
                 당신은 전문적인 설교 기록 및 요약 비서입니다.
@@ -359,27 +504,25 @@ HTML_TEMPLATE = """
                 const resultJson = await generateResponse.json();
                 const rawText = resultJson.candidates[0].content.parts[0].text;
 
-                // 마크다운 문법 정제
                 let resultHtml = rawText;
                 resultHtml = resultHtml.replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
                 resultHtml = resultHtml.replace(/# (.*?)\\n/g, '<h3>$1</h3>\\n');
                 resultHtml = resultHtml.replace(/## (.*?)\\n/g, '<h4>$1</h4>\\n');
                 resultHtml = resultHtml.replace(/\\n/g, '<br>');
 
-                clearInterval(progressInterval);
+                clearInterval(timerInterval);
                 loadingContainer.style.display = 'none';
                 resultBox.style.display = 'block';
 
-                const modelInfoHtml = `<div class="model-info">💡 적용된 AI 모델: Gemini 2.5 Flash (Files API)</div>`;
+                const modelInfoHtml = `<div class="model-info">💡 적용된 AI 모델: Gemini 2.5 Flash (초대용량 Files API)</div>`;
                 resultBox.innerHTML = modelInfoHtml + resultHtml;
 
-                // 5단계: 분석 완료 후 임시 파일 즉시 삭제
                 fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${API_KEY}`, {
                     method: 'DELETE'
                 }).catch(e => console.log("임시 파일 삭제 완료 혹은 생략됨."));
 
             } catch (error) {
-                clearInterval(progressInterval);
+                clearInterval(timerInterval);
                 loadingContainer.style.display = 'none';
                 alert("🚨 대용량 처리 실패: " + error.message);
             }
@@ -394,12 +537,10 @@ async def get_index():
     safe_html = HTML_TEMPLATE.replace("REPLACE_WITH_GEMINI_API_KEY", API_KEY)
     return HTMLResponse(content=safe_html)
 
-# PWA 표준 연동 파일 1: manifest.json 세팅
 @app.get("/manifest.json")
 async def get_manifest():
     return Response(content=MANIFEST_JSON, media_type="application/json")
 
-# PWA 표준 연동 파일 2: sw.js (서비스 워커) 세팅
 @app.get("/sw.js")
 async def get_sw():
     return Response(content=SERVICE_WORKER_JS, media_type="application/javascript")
