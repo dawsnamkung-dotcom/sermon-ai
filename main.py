@@ -53,9 +53,9 @@ HTML_TEMPLATE = """
     <link rel="apple-touch-icon" href="https://img.icons8.com/fluency/192/microphone.png">
 
     <style>
-        body { font-family: 'Malgun Gothic', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        body { font-family: 'Malgun Gothic', sans-serif; max-width: 850px; margin: 0 auto; padding: 20px; line-height: 1.6; }
         .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        h2 { margin: 0; font-size: 20px; }
+        h2 { margin: 0; font-size: 20px; color: #2c3e50; }
         
         #installBtn { 
             display: none; 
@@ -73,7 +73,7 @@ HTML_TEMPLATE = """
         #installBtn:hover { background-color: #1f618d; }
 
         .section { background-color: #f4f6f7; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-        textarea { width: 100%; padding: 10px; margin-bottom: 10px; box-sizing: border-box; border: 1px solid #bdc3c7; border-radius: 4px; }
+        textarea { width: 100%; padding: 10px; margin-bottom: 10px; box-sizing: border-box; border: 1px solid #bdc3c7; border-radius: 4px; font-size: 14px; }
         .btn { padding: 12px 24px; font-size: 16px; cursor: pointer; margin-right: 10px; margin-bottom: 10px; border: none; border-radius: 5px; color: white; font-weight: bold; }
         #recordBtn { background-color: #e74c3c; }
         #stopBtn { background-color: #7f8c8d; }
@@ -97,7 +97,6 @@ HTML_TEMPLATE = """
         .live-script-header { font-weight: bold; color: #2980b9; margin-bottom: 8px; font-size: 13px; }
         .interim-text { color: #95a5a6; }
 
-        /* 결과 박스 및 복사 버튼 스타일 */
         .result-container { margin-top: 20px; display: none; }
         .result-header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .copy-btn { 
@@ -115,8 +114,8 @@ HTML_TEMPLATE = """
         .copy-btn:hover { background-color: #732d91; }
         .copy-btn.copied { background-color: #27ae60; }
 
-        .output-box { background-color: #fff; padding: 20px; border-radius: 8px; white-space: pre-wrap; line-height: 1.6; border: 1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .model-info { color: #7f8c8d; font-size: 13px; text-align: right; margin-bottom: 10px; border-bottom: 1px dashed #bdc3c7; padding-bottom: 5px; }
+        .output-box { background-color: #fff; padding: 25px; border-radius: 8px; white-space: pre-wrap; line-height: 1.8; border: 1px solid #dee2e6; box-shadow: 0 2px 6px rgba(0,0,0,0.08); font-size: 15px; }
+        .model-info { color: #7f8c8d; font-size: 13px; text-align: right; margin-bottom: 15px; border-bottom: 1px dashed #bdc3c7; padding-bottom: 5px; }
         hr { border: 0; height: 1px; background: #dcdde1; margin: 20px 0; }
         
         .loading-container { display: none; background-color: #e8f4f8; border: 1px solid #bde0ec; padding: 20px; border-radius: 8px; margin-top: 20px; text-align: center; }
@@ -129,13 +128,13 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="header-container">
-        <h2>🎙️ AI 설교 요약 (백그라운드 & 100MB+ 지원)</h2>
+        <h2>🎙️ AI 설교 요약 (심층 요약 & 상세 기록)</h2>
         <button id="installBtn">📱 앱 다운로드</button>
     </div>
     
     <div class="section">
         <label><b>1. 사전 맥락 입력 (성경 본문, 고유명사 등):</b></label>
-        <textarea id="context" rows="3" placeholder="예: 오늘 본문은 로마서 8장 1~2절, 바울, 에베소 교회..."></textarea>
+        <textarea id="context" rows="3" placeholder="예: 오늘 본문은 로마서 8장 1~2절, 바울, 에베소 교회, 담임목사님 성함 등..."></textarea>
     </div>
     
     <div class="section">
@@ -162,10 +161,9 @@ HTML_TEMPLATE = """
         <div id="timerText" class="timer-badge"></div>
     </div>
     
-    <!-- 요약 결과 및 복사 버튼 영역 -->
     <div id="resultContainer" class="result-container">
         <div class="result-header-bar">
-            <span style="font-weight: bold; color: #2c3e50; font-size: 16px;">📖 설교 요약 결과</span>
+            <span style="font-weight: bold; color: #2c3e50; font-size: 16px;">📖 설교 심층 요약 및 상세 기록</span>
             <button id="copyBtn" class="copy-btn" onclick="copyResultText()">📋 요약본 복사하기</button>
         </div>
         <div id="resultBox" class="output-box"></div>
@@ -181,16 +179,14 @@ HTML_TEMPLATE = """
         const resultBox = document.getElementById('resultBox');
         const copyBtn = document.getElementById('copyBtn');
 
-        let lastSummaryRawText = ''; // 클립보드 복사용 원본 텍스트
+        let lastSummaryRawText = '';
 
-        // 복사하기 기능 함수
         async function copyResultText() {
             if (!lastSummaryRawText) return;
             try {
                 if (navigator.clipboard && navigator.clipboard.writeText) {
                     await navigator.clipboard.writeText(lastSummaryRawText);
                 } else {
-                    // 클립보드 API 미지원 환경 fallback
                     const tempTextarea = document.createElement('textarea');
                     tempTextarea.value = lastSummaryRawText;
                     document.body.appendChild(tempTextarea);
@@ -475,7 +471,7 @@ HTML_TEMPLATE = """
                 const fileName = fileInfo.file.name;
 
                 let isReady = false;
-                loadingText.innerText = "🧠 구글 AI가 대용량 음성 데이터를 인덱싱하고 있습니다 (잠시만 기다려주세요)...";
+                loadingText.innerText = "🧠 구글 AI가 음성 전체를 세밀하게 청취·인덱싱하고 있습니다 (잠시만 기다려주세요)...";
                 
                 for (let i = 0; i < 120; i++) {
                     const checkResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${API_KEY}`);
@@ -492,34 +488,59 @@ HTML_TEMPLATE = """
 
                 if (!isReady) throw new Error("파일 분석 대기 시간 초과 (4분 초과)");
 
-                loadingText.innerText = "📝 전체 설교 내용을 분석하여 구조화 요약본을 작성 중입니다...";
+                loadingText.innerText = "📝 설교의 모든 대지와 예화, 스크립트 전문을 놓침 없이 상세히 집필 중입니다...";
 
+                // [강화된 심층 프롬프트] 축약 방지, 세부 설명/예화/흐름 전문 보존 지시
                 const prompt = `
-                당신은 전문적인 설교 기록 및 요약 비서입니다.
-                제공된 오디오 파일은 교회 설교 녹음입니다.
-                다음의 사전 맥락(성경 본문, 고유명사)을 참고하여 내용을 정확히 파악하세요: [` + contextInput.value + `]
+                당신은 설교 내용을 한 마디도 놓치지 않고 완벽하게 기록·분석하는 '전문 설교 기록 및 신학 요약 비서'입니다.
+                제공된 오디오 파일 전체를 처음부터 끝까지 꼼꼼히 듣고 분석하세요.
                 
-                분석 후, 아래의 마크다운 템플릿 양식에 맞춰 완벽하게 구조화된 요약본을 작성해 주세요.
-                
-                # 📜 오늘 설교 요약
-                
-                ## 1. 성경 본문 및 제목
-                - (음성에서 파악된 본문과 제목)
-                
-                ## 2. 서론 (도입)
-                - (서론 내용 요약)
-                
-                ## 3. 핵심 대지 (본론)
-                - **첫째,** (내용)
-                - **둘째,** (내용)
-                - **셋째,** (내용)
-                
-                ## 4. 삶의 적용점 및 기도제목
-                - (실천 사항 및 결론 요약)
-                
+                참고할 사전 맥락(본문, 고유명사, 키워드): [` + contextInput.value + `]
+
+                [작성 지침 - 매우 중요]:
+                1. 겉핥기식의 단순 몇 줄 요약을 절대 금지합니다.
+                2. 설교자가 제시한 각 대지(본론)별 세부 설명, 성경적 배경 해석, 실제 삶의 적용점, 나누어준 예화/비유를 구체적으로 모두 기록하세요.
+                3. '핵심 스크립트' 부분은 설교의 전체 흐름(도입 - 전개 - 심화 - 결론)을 따라가며 설교자가 전한 핵심 메시지를 상세한 호흡으로 풍성하게 복원하세요.
+                4. 아래의 마크다운 템플릿 양식을 엄격히 준수하여 빈틈없이 풍성하게 작성해 주세요.
+
                 ---
-                ## 📝 핵심 스크립트 요약
-                (전체 흐름을 파악할 수 있는 스크립트 전문 또는 상세 요약)
+                # 📜 설교 심층 요약 및 상세 기록
+
+                ## 1. 설교 개요
+                - **성경 본문:** (파악된 장/절 정확히 표기)
+                - **설교 제목:** (파악된 제목 또는 핵심 중심 주제)
+                - **핵심 중심 메시지 (Key Message):** (설교 전체를 관통하는 핵심 명제 2~3줄)
+
+                ## 2. 서론 (도입 배경)
+                - 설교를 시작하며 던진 질문, 시대적 배경, 또는 도입부 이야기
+                - 본문으로 들어가게 된 계기 및 문제 제기
+
+                ## 3. 핵심 대지 및 심층 분석 (본론)
+                - **대지 1: [첫 번째 핵심 주제]**
+                  - 본문 해석 및 의미: (성경 구절에 대한 설교자의 상세 설명)
+                  - 설교자의 강조점: (성도들에게 전하고자 하는 핵심 원리)
+                  - 관련 예화 및 비유: (언급된 구체적인 사례나 이야기)
+
+                - **대지 2: [두 번째 핵심 주제]**
+                  - 본문 해석 및 의미: 
+                  - 설교자의 강조점: 
+                  - 관련 예화 및 비유: 
+
+                - **대지 3: [세 번째 핵심 주제 (있는 경우)]**
+                  - 본문 해석 및 의미: 
+                  - 설교자의 강조점: 
+                  - 관련 예화 및 비유: 
+
+                ## 4. 설교 속 주요 예화 및 나눔
+                - (설교 중 언급된 인상 깊은 간증, 비유, 역사적 사건, 일상 예화 등을 구체적으로 정리)
+
+                ## 5. 삶의 적용 및 결단의 기도제목
+                - **삶의 실천점:** (오늘부터 삶에서 실천해야 할 구체적인 행동 가이드)
+                - **공동 기도제목:** (설교를 바탕으로 드려야 할 결단과 간구의 기도)
+
+                ---
+                ## 📝 상세 설교 스크립트 (설교 흐름 복원)
+                (설교자가 도입부터 마무리 기도/권면까지 전달한 핵심 흐름과 주요 구절을 시간 순서대로 상세하게 기술하여, 현장에서 직접 듣는 것처럼 생생하게 복원해 주세요.)
                 `;
 
                 const generateResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`, {
@@ -553,7 +574,7 @@ HTML_TEMPLATE = """
 
                 const resultJson = await generateResponse.json();
                 const rawText = resultJson.candidates[0].content.parts[0].text;
-                lastSummaryRawText = rawText; // 복사용 원본 저장
+                lastSummaryRawText = rawText;
 
                 let resultHtml = rawText;
                 resultHtml = resultHtml.replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
@@ -565,7 +586,7 @@ HTML_TEMPLATE = """
                 loadingContainer.style.display = 'none';
                 resultContainer.style.display = 'block';
 
-                const modelInfoHtml = `<div class="model-info">💡 적용된 AI 모델: Gemini 2.5 Flash (초대용량 Files API)</div>`;
+                const modelInfoHtml = `<div class="model-info">💡 적용된 AI 모델: Gemini 2.5 Flash (심층 분석 & 상세 스크립트 모드)</div>`;
                 resultBox.innerHTML = modelInfoHtml + resultHtml;
 
                 fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${API_KEY}`, {
