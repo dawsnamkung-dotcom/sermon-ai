@@ -97,7 +97,25 @@ HTML_TEMPLATE = """
         .live-script-header { font-weight: bold; color: #2980b9; margin-bottom: 8px; font-size: 13px; }
         .interim-text { color: #95a5a6; }
 
-        .output-box { background-color: #fff; padding: 20px; border-radius: 8px; margin-top: 20px; white-space: pre-wrap; line-height: 1.6; border: 1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        /* 결과 박스 및 복사 버튼 스타일 */
+        .result-container { margin-top: 20px; display: none; }
+        .result-header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .copy-btn { 
+            background-color: #8e44ad; 
+            color: white; 
+            padding: 8px 16px; 
+            font-size: 14px; 
+            font-weight: bold; 
+            border: none; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+            transition: all 0.2s; 
+        }
+        .copy-btn:hover { background-color: #732d91; }
+        .copy-btn.copied { background-color: #27ae60; }
+
+        .output-box { background-color: #fff; padding: 20px; border-radius: 8px; white-space: pre-wrap; line-height: 1.6; border: 1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .model-info { color: #7f8c8d; font-size: 13px; text-align: right; margin-bottom: 10px; border-bottom: 1px dashed #bdc3c7; padding-bottom: 5px; }
         hr { border: 0; height: 1px; background: #dcdde1; margin: 20px 0; }
         
@@ -144,7 +162,14 @@ HTML_TEMPLATE = """
         <div id="timerText" class="timer-badge"></div>
     </div>
     
-    <div id="resultBox" class="output-box" style="display:none;"></div>
+    <!-- 요약 결과 및 복사 버튼 영역 -->
+    <div id="resultContainer" class="result-container">
+        <div class="result-header-bar">
+            <span style="font-weight: bold; color: #2c3e50; font-size: 16px;">📖 설교 요약 결과</span>
+            <button id="copyBtn" class="copy-btn" onclick="copyResultText()">📋 요약본 복사하기</button>
+        </div>
+        <div id="resultBox" class="output-box"></div>
+    </div>
 
     <script>
         const API_KEY = "REPLACE_WITH_GEMINI_API_KEY";
@@ -152,7 +177,37 @@ HTML_TEMPLATE = """
         const loadingContainer = document.getElementById('loadingContainer');
         const loadingText = document.getElementById('loadingText');
         const timerText = document.getElementById('timerText');
+        const resultContainer = document.getElementById('resultContainer');
         const resultBox = document.getElementById('resultBox');
+        const copyBtn = document.getElementById('copyBtn');
+
+        let lastSummaryRawText = ''; // 클립보드 복사용 원본 텍스트
+
+        // 복사하기 기능 함수
+        async function copyResultText() {
+            if (!lastSummaryRawText) return;
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(lastSummaryRawText);
+                } else {
+                    // 클립보드 API 미지원 환경 fallback
+                    const tempTextarea = document.createElement('textarea');
+                    tempTextarea.value = lastSummaryRawText;
+                    document.body.appendChild(tempTextarea);
+                    tempTextarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(tempTextarea);
+                }
+                copyBtn.innerText = '✅ 복사 완료!';
+                copyBtn.classList.add('copied');
+                setTimeout(() => {
+                    copyBtn.innerText = '📋 요약본 복사하기';
+                    copyBtn.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                alert('복사에 실패했습니다: ' + err);
+            }
+        }
 
         let deferredPrompt;
         const installBtn = document.getElementById('installBtn');
@@ -181,8 +236,8 @@ HTML_TEMPLATE = """
 
         let mediaRecorder;
         let audioChunks = [];
-        let wakeLock = null; // 화면 꺼짐 방지 락
-        let audioContext = null; // 백그라운드 오디오 유지용
+        let wakeLock = null;
+        let audioContext = null;
         const recordBtn = document.getElementById('recordBtn');
         const stopBtn = document.getElementById('stopBtn');
         const toggleScriptBtn = document.getElementById('toggleScriptBtn');
@@ -232,7 +287,6 @@ HTML_TEMPLATE = """
             }
         };
 
-        // 화면 꺼짐 방지 요청 함수
         async function requestWakeLock() {
             try {
                 if ('wakeLock' in navigator) {
@@ -247,17 +301,15 @@ HTML_TEMPLATE = """
         }
 
         recordBtn.onclick = async () => {
-            // 1. 화면 꺼짐 방지 활성화
             await requestWakeLock();
 
-            // 2. 백그라운드 오디오 세션 활성화
             try {
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
                 if (AudioCtx) {
                     audioContext = new AudioCtx();
                     const oscillator = audioContext.createOscillator();
                     const gainNode = audioContext.createGain();
-                    gainNode.gain.value = 0.0001; // 무음 유지
+                    gainNode.gain.value = 0.0001;
                     oscillator.connect(gainNode);
                     gainNode.connect(audioContext.destination);
                     oscillator.start();
@@ -305,7 +357,6 @@ HTML_TEMPLATE = """
         stopBtn.onclick = () => {
             isRecording = false;
 
-            // 화면 꺼짐 방지 및 오디오 컨텍스트 해제
             if (wakeLock !== null) {
                 wakeLock.release();
                 wakeLock = null;
@@ -329,7 +380,6 @@ HTML_TEMPLATE = """
             toggleScriptBtn.innerText = '📜 실시간 스크립트 보기';
         };
 
-        // 창이 다시 활성화되었을 때 WakeLock 재설정
         document.addEventListener('visibilitychange', async () => {
             if (wakeLock !== null && document.visibilityState === 'visible' && isRecording) {
                 await requestWakeLock();
@@ -368,7 +418,7 @@ HTML_TEMPLATE = """
 
         async function processAudioWithFilesAPI(fileOrBlob, filename, mimeType) {
             loadingContainer.style.display = 'block';
-            resultBox.style.display = 'none';
+            resultContainer.style.display = 'none';
             timerText.innerText = '';
             
             let elapsedSec = 0;
@@ -503,6 +553,7 @@ HTML_TEMPLATE = """
 
                 const resultJson = await generateResponse.json();
                 const rawText = resultJson.candidates[0].content.parts[0].text;
+                lastSummaryRawText = rawText; // 복사용 원본 저장
 
                 let resultHtml = rawText;
                 resultHtml = resultHtml.replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
@@ -512,7 +563,7 @@ HTML_TEMPLATE = """
 
                 clearInterval(timerInterval);
                 loadingContainer.style.display = 'none';
-                resultBox.style.display = 'block';
+                resultContainer.style.display = 'block';
 
                 const modelInfoHtml = `<div class="model-info">💡 적용된 AI 모델: Gemini 2.5 Flash (초대용량 Files API)</div>`;
                 resultBox.innerHTML = modelInfoHtml + resultHtml;
